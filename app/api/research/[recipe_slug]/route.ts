@@ -83,8 +83,7 @@ async function runResearch(
         max_tokens: 1024,
         // web_search_20250305 is a server-side tool — Anthropic performs the
         // searches and returns the synthesised response in one API call.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        tools: [{ type: "web_search_20250305", name: "web_search" } as any],
+        tools: [{ type: "web_search_20250305", name: "web_search" } as never],
         system: RESEARCH_SYSTEM,
         messages: [{ role: "user", content: userMessage }],
       });
@@ -177,12 +176,15 @@ export async function GET(
   }
 
   // 3. Run the research call.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const plan = recipe.planJson as any;
-  const planSummary: string = plan?.summary ?? "";
-  const toolSlugs: string[] = (plan?.steps ?? []).flatMap(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (s: any) => (s.tools ?? []).map((t: any) => t.slug as string),
+  const plan = recipe.planJson as Record<string, unknown>;
+  const planSummary: string = typeof plan?.summary === "string" ? plan.summary : "";
+  const toolSlugs: string[] = (Array.isArray(plan?.steps) ? plan.steps : []).flatMap(
+    (s: unknown) => {
+      const step = s as Record<string, unknown>;
+      return (Array.isArray(step.tools) ? step.tools : []).map(
+        (t: unknown) => ((t as Record<string, unknown>).slug as string) ?? "",
+      );
+    },
   );
 
   const result = await runResearch(
