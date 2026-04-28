@@ -6,3 +6,4 @@ export * from "./preferences";
 export * from "./drafts";
 export * from "./proposals";
 export * from "./persistence";
+export * from "./research";

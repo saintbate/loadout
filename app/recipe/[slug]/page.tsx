@@ -20,6 +20,7 @@ import { RunRecipeButton } from "./_run-recipe-button";
 import { SaveButton } from "./_save-button";
 import { StepCard } from "./_step-card";
 import { IntegrationBanner } from "./_integration-banner";
+import { ResearchSection } from "./_research-section";
 
 export const dynamic = "force-dynamic";
 
@@ -197,6 +198,9 @@ export default async function RecipePage({
           </ul>
         </div>
       )}
+
+      {/* Prior art + differentiation — loaded asynchronously client-side */}
+      <ResearchSection recipeSlug={recipe.slug} />
 
       <ol className="mt-8 space-y-4">
         {stepsWithHtml.map((step) => (
