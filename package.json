@@ -1,0 +1,49 @@
+{
+  "name": "loadout",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "bash -c 'if [ -z \"$ANTHROPIC_API_KEY\" ]; then unset ANTHROPIC_API_KEY; fi; exec next dev'",
+    "build": "bash -c 'if [ -z \"$ANTHROPIC_API_KEY\" ]; then unset ANTHROPIC_API_KEY; fi; exec next build'",
+    "start": "next start",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env db/seed.ts",
+    "crawl": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/crawl-tools.ts",
+    "mcp:stdio": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env mcp/server.ts",
+    "mcp:smoke": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/smoke-mcp.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@clerk/nextjs": "^6.9.6",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@neondatabase/serverless": "^0.10.4",
+    "@radix-ui/react-slot": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.38.3",
+    "lucide-react": "^0.469.0",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "shiki": "^4.0.2",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.1",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^15.3.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

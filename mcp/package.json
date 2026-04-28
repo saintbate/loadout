@@ -1,0 +1,36 @@
+{
+  "name": "@loadoutx/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP stdio bridge for Loadout – brings your saved recipes into Claude Code and Cursor",
+  "type": "module",
+  "bin": {
+    "loadout-mcp": "./dist/server.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.2",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "loadout",
+    "cursor",
+    "claude",
+    "claude-code"
+  ],
+  "license": "MIT"
+}
