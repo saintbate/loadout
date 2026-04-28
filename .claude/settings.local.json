@@ -68,7 +68,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://loadout-roan.vercel.app/)",
       "Bash(curl -s -L https://loadout-roan.vercel.app/)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://loadout-roan.vercel.app/settings)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://loadout-roan.vercel.app/api/health)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://loadout-roan.vercel.app/api/health)",
+      "Bash(git push *)"
     ]
   }
 }

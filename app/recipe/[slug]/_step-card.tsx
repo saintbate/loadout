@@ -320,8 +320,10 @@ function ToolChip({
   return <span className={className}>{inner}</span>;
 }
 
-function timeAgo(d: Date): string {
-  const ms = Date.now() - d.getTime();
+function timeAgo(d: Date | string): string {
+  // completedAt may arrive as an ISO string across the RSC boundary.
+  const ts = typeof d === "string" ? new Date(d).getTime() : d.getTime();
+  const ms = Date.now() - ts;
   const min = Math.floor(ms / 60000);
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
@@ -329,5 +331,6 @@ function timeAgo(d: Date): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return d.toISOString().slice(0, 10);
+  const date = typeof d === "string" ? d.slice(0, 10) : d.toISOString().slice(0, 10);
+  return date;
 }

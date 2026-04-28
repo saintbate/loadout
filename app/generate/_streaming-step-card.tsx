@@ -46,7 +46,9 @@ export function StreamingStepCard({ step }: { step: StreamingStep }) {
             <div className="flex flex-wrap gap-1.5">
               {step.tools.map((tool) => {
                 const status = resolveToolStatus(tool);
-                const meta = STATUS_META[status];
+                // Guard against AI emitting an unexpected status value —
+                // fall back to "verified" appearance rather than crashing.
+                const meta = STATUS_META[status] ?? STATUS_META["verified"];
                 return (
                   <span
                     key={`${step.step_number}-${tool.slug}`}

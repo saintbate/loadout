@@ -167,10 +167,10 @@ export default async function RecipePage({
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-neutral-200 py-3 text-sm text-neutral-600">
-        <Stat label="Time" value={`${plan.estimated_time_minutes} min`} />
+        <Stat label="Time" value={`${plan.estimated_time_minutes ?? 0} min`} />
         <Stat
           label="Cost"
-          value={`$${plan.estimated_monthly_cost_usd.toFixed(2)}/mo`}
+          value={`$${(plan.estimated_monthly_cost_usd ?? 0).toFixed(2)}/mo`}
         />
         <Stat label="Steps" value={plan.steps.length} />
         <Stat label="Tools" value={totalToolCount} />
