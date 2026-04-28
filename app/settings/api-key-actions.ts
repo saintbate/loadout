@@ -20,20 +20,25 @@ export async function generateApiKey() {
   const profile = await ensureUserProfile();
   if (!profile) redirect("/sign-in?redirect_url=/settings");
 
-  await revokeAllKeysForUser(profile.id);
-  const { rawKey } = await createApiKey({
-    userId: profile.id,
-    name: "MCP integration",
-  });
+  try {
+    await revokeAllKeysForUser(profile.id);
+    const { rawKey } = await createApiKey({
+      userId: profile.id,
+      name: "MCP integration",
+    });
 
-  const c = await cookies();
-  c.set(RAW_KEY_COOKIE, rawKey, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/settings",
-    maxAge: 60 * 5, // 5 minutes
-  });
+    const c = await cookies();
+    c.set(RAW_KEY_COOKIE, rawKey, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/settings",
+      maxAge: 60 * 5, // 5 minutes
+    });
+  } catch (err) {
+    console.error("[generateApiKey] failed:", err);
+    redirect("/settings?error=keygen#api-keys");
+  }
 
   revalidatePath("/settings");
   redirect("/settings#api-keys");

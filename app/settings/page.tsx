@@ -23,12 +23,12 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const profile = await ensureUserProfile();
   if (!profile) redirect("/sign-in?redirect_url=/settings");
 
-  const { saved } = await searchParams;
+  const { saved, error } = await searchParams;
 
   const [prefs, allTools, keys, freshRawKey] = await Promise.all([
     loadUserPreferences(profile.id),
@@ -90,6 +90,11 @@ export default async function SettingsPage({
       {saved && (
         <div className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           Saved.
+        </div>
+      )}
+      {error === "keygen" && (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          Failed to generate API key. Please try again.
         </div>
       )}
 

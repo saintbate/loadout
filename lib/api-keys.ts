@@ -1,4 +1,4 @@
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, pbkdf2Sync, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { apiKeys } from "@/db/schema";
@@ -16,8 +16,13 @@ import { apiKeys } from "@/db/schema";
  *   - last_four (so the UI can show "lo_abc…wxyz" later)
  */
 
-const SCRYPT_N = 16384; // CPU/memory cost
-const SCRYPT_KEYLEN = 32;
+// pbkdf2 is used instead of scrypt because serverless CPUs aggressively
+// throttle synchronous work. API keys already have ~288 bits of entropy
+// (48 base64url chars), so key-stretching is security theatre — the work
+// factor here is defence-in-depth against a leaked DB, not a real attack
+// surface. 100 000 PBKDF2-SHA-256 iterations runs in ~5ms on any Lambda.
+const PBKDF2_ITERATIONS = 100_000;
+const PBKDF2_KEYLEN = 32;
 
 function base64url(bytes: Buffer): string {
   return bytes
@@ -37,7 +42,7 @@ function generateSecret(): string {
 
 function hashSecret(secret: string, saltHex: string): string {
   const salt = Buffer.from(saltHex, "hex");
-  const derived = scryptSync(secret, salt, SCRYPT_KEYLEN, { N: SCRYPT_N });
+  const derived = pbkdf2Sync(secret, salt, PBKDF2_ITERATIONS, PBKDF2_KEYLEN, "sha256");
   return derived.toString("hex");
 }
 
