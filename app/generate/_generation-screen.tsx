@@ -9,14 +9,9 @@ import {
   type ServerEvent,
   type StreamingStep,
 } from "./types";
-import { DecisionFeed } from "./_decision-feed";
 import { GhostStepCard, StreamingStepCard } from "./_streaming-step-card";
 
-type Phase = "analyzing" | "selecting" | "building" | "finalizing";
-type FeedItem = { id: number; line: string };
-
 const GHOST_COUNT = 4;
-let feedId = 0;
 
 /**
  * Read the generation payload from sessionStorage exactly once — in the
@@ -43,31 +38,20 @@ export function GenerationScreen() {
   // Payload is read exactly once, synchronously, at component creation.
   const [payload] = useState<GenPayload | null>(readPayload);
 
-  const [phase, setPhase] = useState<Phase>("analyzing");
-  const [feed, setFeed] = useState<FeedItem[]>([]);
   const [summary, setSummary] = useState("");
   const [steps, setSteps] = useState<StreamingStep[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
-  const [collapsing, setCollapsing] = useState(false);
-  const [mobileShowFeed, setMobileShowFeed] = useState(true);
-
-  function pushFeed(line: string) {
-    setFeed((prev) => [...prev, { id: feedId++, line }]);
-  }
 
   function handleEvent(event: ServerEvent) {
     switch (event.type) {
       case "phase":
-        setPhase(event.phase);
-        break;
       case "feed":
-        pushFeed(event.line);
+      case "totals":
+        // Feed/phase events are no-ops now that the side panel is removed.
         break;
       case "summary":
         setSummary(event.summary);
-        break;
-      case "totals":
         break;
       case "step_started":
         setSteps((prev) =>
@@ -131,10 +115,9 @@ export function GenerationScreen() {
         break;
       case "done":
         setDone(true);
-        setCollapsing(true);
         window.setTimeout(() => {
           router.replace(`/recipe/${event.slug}`);
-        }, 380);
+        }, 200);
         break;
       case "failed":
         setError(event.message);
@@ -157,10 +140,6 @@ export function GenerationScreen() {
     if (!payload) return;
 
     const controller = new AbortController();
-    const mobileTimer = window.setTimeout(
-      () => setMobileShowFeed(false),
-      3000,
-    );
 
     void runStream({
       payload,
@@ -171,7 +150,6 @@ export function GenerationScreen() {
 
     return () => {
       controller.abort();
-      window.clearTimeout(mobileTimer);
     };
     // payload is stable (set once from sessionStorage); handleEvent is
     // defined inline so listing it would cause an infinite loop.
@@ -182,76 +160,50 @@ export function GenerationScreen() {
     error || done ? 0 : Math.max(0, GHOST_COUNT - steps.length);
 
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-50 flex bg-neutral-50",
-        "flex-col md:flex-row",
-      )}
-    >
-      {/* LEFT: decision feed */}
-      <div
-        className={cn(
-          "shrink-0 transition-[width,opacity] duration-[380ms] ease-out",
-          "md:h-full md:overflow-hidden",
-          collapsing ? "md:w-0 md:opacity-0" : "md:w-[28%] md:min-w-[240px]",
-          mobileShowFeed && !done ? "h-44" : "h-12",
-          done && "max-md:h-0 max-md:opacity-0",
-        )}
-      >
-        <DecisionFeed items={feed} phase={phase} />
-      </div>
-
-      {/* RIGHT: plan skeleton */}
-      <div
-        className={cn(
-          "flex-1 overflow-y-auto px-6 py-8 transition-opacity duration-300",
-          mobileShowFeed && !done ? "max-md:opacity-40" : "opacity-100",
-        )}
-      >
-        <div className="mx-auto max-w-3xl space-y-6">
-          <div className="space-y-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-              {done ? "ready" : "generating plan"}
-            </p>
-            <h1
-              className={cn(
-                "min-h-[1.6em] text-2xl font-semibold tracking-tight",
-                summary ? "text-neutral-900" : "text-neutral-300",
-              )}
-            >
-              {summary || "Reading your goal…"}
-            </h1>
-          </div>
-
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-              <p className="font-medium">Plan generation failed.</p>
-              <p className="mt-1 text-red-800">{error}</p>
-              <button
-                type="button"
-                onClick={() => router.replace("/")}
-                className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
-              >
-                Back to start
-              </button>
-            </div>
-          )}
-
-          <ol className="space-y-4">
-            {steps
-              .slice()
-              .sort((a, b) => a.step_number - b.step_number)
-              .map((step) => (
-                <StreamingStepCard key={step.step_number} step={step} />
-              ))}
-            {Array.from({ length: visibleGhosts }).map((_, i) => (
-              <GhostStepCard
-                key={`ghost-${i}`}
-                index={steps.length + i + 1}
-              />
-            ))}
-          </ol>
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-50 px-6 py-10">
+      <div className="mx-auto max-w-3xl space-y-6">
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+            {done ? "ready" : "generating plan"}
+          </p>
+          <h1
+            className={cn(
+              "min-h-[1.6em] text-2xl font-semibold tracking-tight",
+              summary ? "text-neutral-900" : "text-neutral-300",
+            )}
+          >
+            {summary || "Reading your goal…"}
+          </h1>
         </div>
+
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-medium">Plan generation failed.</p>
+            <p className="mt-1 text-red-800">{error}</p>
+            <button
+              type="button"
+              onClick={() => router.replace("/")}
+              className="mt-3 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+            >
+              Back to start
+            </button>
+          </div>
+        )}
+
+        <ol className="space-y-4">
+          {steps
+            .slice()
+            .sort((a, b) => a.step_number - b.step_number)
+            .map((step) => (
+              <StreamingStepCard key={step.step_number} step={step} />
+            ))}
+          {Array.from({ length: visibleGhosts }).map((_, i) => (
+            <GhostStepCard
+              key={`ghost-${i}`}
+              index={steps.length + i + 1}
+            />
+          ))}
+        </ol>
       </div>
     </div>
   );

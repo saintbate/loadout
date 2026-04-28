@@ -36,9 +36,9 @@ import {
 } from "@/lib/plan-and-persist";
 import { recipeSlug } from "@/lib/slug";
 
-export const runtime = "nodejs";
-// Cap the request lifetime; planner streams typically finish in 5-25s.
-export const maxDuration = 60;
+// Edge Runtime: no streaming timeout (vs. Hobby plan's 10s serverless cap).
+// All deps are Edge-compatible: Neon HTTP driver, Anthropic SDK, Clerk auth.
+export const runtime = "edge";
 
 type Body = {
   goal?: string;
