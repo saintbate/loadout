@@ -1,14 +1,16 @@
 /**
  * GET  /api/research/[recipe_slug]
- *   Returns cached research immediately, or runs the Anthropic web-search
- *   call synchronously (15-20 s) if no cache exists, then caches and returns.
+ *   SSE stream. Sends `{status:"pending"}` immediately (satisfying Vercel's
+ *   25-second initial-response deadline), then runs the Anthropic web-search
+ *   call (15-30 s), caches the result, and sends `{status:"ready", data:{...}}`.
+ *
+ *   If the result is already cached it sends `{status:"ready"}` in the first
+ *   frame with no further delay.
  *
  * DELETE /api/research/[recipe_slug]
  *   Clears the cached row so the next GET re-runs fresh research.
- *   Used by the "Refresh research" button.
  *
- * Edge Runtime — no streaming timeout. All deps (Neon HTTP, Anthropic SDK)
- * are Edge-compatible.
+ * Edge Runtime — no streaming timeout.
  */
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
@@ -20,32 +22,34 @@ export const runtime = "edge";
 
 const RESEARCH_MODEL = "claude-sonnet-4-6";
 
-const RESEARCH_SYSTEM = `You are a tactical build advisor. Given a build plan, search \
-the web for real implementations of similar systems and return a JSON object with exactly \
-these three fields:
-
-prior_art: 2-3 sentences on how real existing products or open-source projects have \
-implemented this. Be specific — name actual products, repos, or postmortems. No generic \
-category descriptions.
-
-missed_by_obvious: 2-3 sentences on where the standard implementation approach (the one \
-this plan takes) has known failure modes or gaps, based on what you find in real \
-postmortems, GitHub issues, or community discussions. If no specific failure modes are \
-documented, say so.
-
-differentiation_pick: 2-3 sentences on the single most defensible thing the user could \
-build differently, grounded in a specific gap you found in existing implementations. Must \
-be tied to something real you found, not generic advice. If no clear differentiation \
-signal exists, say "The standard implementation is well-covered in this space. Focus on \
-execution quality over differentiation."
-
-Return ONLY valid JSON. No preamble, no markdown fences.`;
+const RESEARCH_SYSTEM =
+  "You are a tactical build advisor. Given a build plan, search " +
+  "the web for real implementations of similar systems and return a JSON object with exactly " +
+  "these three fields:\n\n" +
+  "prior_art: 2-3 sentences on how real existing products or open-source projects have " +
+  "implemented this. Be specific — name actual products, repos, or postmortems. No generic " +
+  "category descriptions.\n\n" +
+  "missed_by_obvious: 2-3 sentences on where the standard implementation approach (the one " +
+  "this plan takes) has known failure modes or gaps, based on what you find in real " +
+  "postmortems, GitHub issues, or community discussions. If no specific failure modes are " +
+  "documented, say so.\n\n" +
+  "differentiation_pick: 2-3 sentences on the single most defensible thing the user could " +
+  "build differently, grounded in a specific gap you found in existing implementations. Must " +
+  "be tied to something real you found, not generic advice. If no clear differentiation " +
+  'signal exists, say "The standard implementation is well-covered in this space. Focus on ' +
+  'execution quality over differentiation."\n\n' +
+  "Return ONLY valid JSON. No preamble, no markdown fences.";
 
 type ResearchResult = {
   prior_art: string;
   missed_by_obvious: string;
   differentiation_pick: string;
 };
+
+type SseEvent =
+  | { status: "pending" }
+  | { status: "ready"; data: ResearchResult; generatedAt: string }
+  | { status: "error" };
 
 /** ── helpers ──────────────────────────────────────────────────────── */
 
@@ -60,8 +64,8 @@ function buildUserMessage(
     `## Plan summary\n${planSummary}`,
     `## Key tools in this plan\n${toolList || "not specified"}`,
     "",
-    "Search the web for real prior art and implementation gaps for this specific \
-build. Return the JSON object as instructed.",
+    "Search the web for real prior art and implementation gaps for this specific " +
+      "build. Return the JSON object as instructed.",
   ].join("\n\n");
 }
 
@@ -81,8 +85,9 @@ async function runResearch(
       const response = await client.messages.create({
         model: RESEARCH_MODEL,
         max_tokens: 1024,
-        // web_search_20250305 is a server-side tool — Anthropic performs the
-        // searches and returns the synthesised response in one API call.
+        // web_search_20250305 is a built-in Anthropic server-side tool.
+        // Anthropic performs the searches and returns the synthesised
+        // response in one API call — no client-side tool loop needed.
         tools: [{ type: "web_search_20250305", name: "web_search" } as never],
         system: RESEARCH_SYSTEM,
         messages: [{ role: "user", content: userMessage }],
@@ -124,96 +129,132 @@ async function runResearch(
   return null;
 }
 
-/** ── GET ──────────────────────────────────────────────────────────── */
+/** ── GET (SSE) ─────────────────────────────────────────────────────── */
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ recipe_slug: string }> },
 ) {
   const { recipe_slug } = await params;
+  const encoder = new TextEncoder();
 
-  // 1. Resolve recipe.
-  const [recipe] = await db
-    .select({
-      id: recipes.id,
-      goalDescription: recipes.goalDescription,
-      planJson: recipes.planJson,
-      updatedAt: recipes.updatedAt,
-    })
-    .from(recipes)
-    .where(eq(recipes.slug, recipe_slug))
-    .limit(1);
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: SseEvent) => {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+        );
+      };
 
-  if (!recipe) {
-    return new Response("not found", { status: 404 });
-  }
+      try {
+        // 1. Resolve recipe.
+        const [recipe] = await db
+          .select({
+            id: recipes.id,
+            goalDescription: recipes.goalDescription,
+            planJson: recipes.planJson,
+            updatedAt: recipes.updatedAt,
+          })
+          .from(recipes)
+          .where(eq(recipes.slug, recipe_slug))
+          .limit(1);
 
-  // 2. Check for a valid cached result.
-  const [cached] = await db
-    .select()
-    .from(recipeResearch)
-    .where(eq(recipeResearch.recipeId, recipe.id))
-    .limit(1);
+        if (!recipe) {
+          send({ status: "error" });
+          controller.close();
+          return;
+        }
 
-  if (cached) {
-    // Invalidate if the recipe plan was updated after the research ran.
-    const stale = recipe.updatedAt > cached.generatedAt;
-    if (!stale) {
-      return Response.json({
-        status: "ready",
-        data: {
-          prior_art: cached.priorArt,
-          missed_by_obvious: cached.missedByObvious,
-          differentiation_pick: cached.differentiationPick,
-        } satisfies ResearchResult,
-        generatedAt: cached.generatedAt,
-      });
-    }
-    // Stale — delete so we regenerate below.
-    await db
-      .delete(recipeResearch)
-      .where(eq(recipeResearch.recipeId, recipe.id));
-  }
+        // 2. Check cache.
+        const [cached] = await db
+          .select()
+          .from(recipeResearch)
+          .where(eq(recipeResearch.recipeId, recipe.id))
+          .limit(1);
 
-  // 3. Run the research call.
-  const plan = recipe.planJson as Record<string, unknown>;
-  const planSummary: string = typeof plan?.summary === "string" ? plan.summary : "";
-  const toolSlugs: string[] = (Array.isArray(plan?.steps) ? plan.steps : []).flatMap(
-    (s: unknown) => {
-      const step = s as Record<string, unknown>;
-      return (Array.isArray(step.tools) ? step.tools : []).map(
-        (t: unknown) => ((t as Record<string, unknown>).slug as string) ?? "",
-      );
+        if (cached) {
+          const stale = recipe.updatedAt > cached.generatedAt;
+          if (!stale) {
+            send({
+              status: "ready",
+              data: {
+                prior_art: cached.priorArt,
+                missed_by_obvious: cached.missedByObvious,
+                differentiation_pick: cached.differentiationPick,
+              },
+              generatedAt: cached.generatedAt.toISOString(),
+            });
+            controller.close();
+            return;
+          }
+          // Stale — delete and regenerate.
+          await db
+            .delete(recipeResearch)
+            .where(eq(recipeResearch.recipeId, recipe.id));
+        }
+
+        // 3. Send the "pending" ping IMMEDIATELY so Vercel's 25 s initial-
+        //    response deadline is satisfied before the Anthropic call starts.
+        send({ status: "pending" });
+
+        // 4. Run research.
+        const plan = recipe.planJson as Record<string, unknown>;
+        const planSummary =
+          typeof plan?.summary === "string" ? plan.summary : "";
+        const toolSlugs = (
+          Array.isArray(plan?.steps) ? plan.steps : []
+        ).flatMap((s: unknown) => {
+          const step = s as Record<string, unknown>;
+          return (Array.isArray(step.tools) ? step.tools : []).map(
+            (t: unknown) =>
+              ((t as Record<string, unknown>).slug as string) ?? "",
+          );
+        });
+
+        const result = await runResearch(
+          recipe.goalDescription,
+          planSummary,
+          [...new Set(toolSlugs)],
+        );
+
+        if (!result) {
+          send({ status: "error" });
+          controller.close();
+          return;
+        }
+
+        // 5. Cache (race-safe).
+        await db
+          .insert(recipeResearch)
+          .values({
+            recipeId: recipe.id,
+            priorArt: result.prior_art,
+            missedByObvious: result.missed_by_obvious,
+            differentiationPick: result.differentiation_pick,
+            modelUsed: RESEARCH_MODEL,
+          })
+          .onConflictDoNothing();
+
+        send({
+          status: "ready",
+          data: result,
+          generatedAt: new Date().toISOString(),
+        });
+        controller.close();
+      } catch (err) {
+        console.error("[research] fatal", err);
+        send({ status: "error" });
+        controller.close();
+      }
     },
-  );
+  });
 
-  const result = await runResearch(
-    recipe.goalDescription,
-    planSummary,
-    [...new Set(toolSlugs)],
-  );
-
-  if (!result) {
-    return Response.json({ status: "error" });
-  }
-
-  // 4. Cache with upsert semantics (another concurrent request may have
-  //    already inserted — onConflictDoNothing prevents a duplicate-key error).
-  await db
-    .insert(recipeResearch)
-    .values({
-      recipeId: recipe.id,
-      priorArt: result.prior_art,
-      missedByObvious: result.missed_by_obvious,
-      differentiationPick: result.differentiation_pick,
-      modelUsed: RESEARCH_MODEL,
-    })
-    .onConflictDoNothing();
-
-  return Response.json({
-    status: "ready",
-    data: result,
-    generatedAt: new Date().toISOString(),
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
   });
 }
 

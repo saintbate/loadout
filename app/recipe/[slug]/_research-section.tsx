@@ -30,28 +30,57 @@ export function ResearchSection({ recipeSlug }: Props) {
     setOpen(window.innerWidth >= 768);
   }, []);
 
-  // Fetch (or generate) the research result.
+  // Fetch (or generate) the research result via SSE stream.
+  // The server sends {status:"pending"} immediately (within the Edge
+  // Runtime's 25 s deadline), then {status:"ready"|"error"} when done.
   async function fetchResearch() {
     setState({ phase: "loading" });
     try {
-      const res = await fetch(`/api/research/${encodeURIComponent(recipeSlug)}`);
-      if (!res.ok) {
+      const res = await fetch(
+        `/api/research/${encodeURIComponent(recipeSlug)}`,
+      );
+      if (!res.ok || !res.body) {
         setState({ phase: "error" });
         return;
       }
-      const json = (await res.json()) as {
-        status: string;
-        data?: ResearchData;
-        generatedAt?: string;
-      };
-      if (json.status === "ready" && json.data) {
-        setState({
-          phase: "ready",
-          data: json.data,
-          generatedAt: json.generatedAt ?? new Date().toISOString(),
-        });
-      } else {
-        setState({ phase: "error" });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx: number;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const chunk = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const dataLine = chunk
+            .split("\n")
+            .find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const event = JSON.parse(dataLine.slice(6)) as {
+              status: string;
+              data?: ResearchData;
+              generatedAt?: string;
+            };
+            if (event.status === "ready" && event.data) {
+              setState({
+                phase: "ready",
+                data: event.data,
+                generatedAt: event.generatedAt ?? new Date().toISOString(),
+              });
+            } else if (event.status === "error") {
+              setState({ phase: "error" });
+            }
+            // "pending" events are silently ignored — skeleton stays visible.
+          } catch {
+            // malformed event line — skip
+          }
+        }
       }
     } catch {
       setState({ phase: "error" });
@@ -67,12 +96,13 @@ export function ResearchSection({ recipeSlug }: Props) {
 
   async function handleRefresh() {
     setRefreshing(true);
+    // Clear the cached row first (best-effort).
     try {
       await fetch(`/api/research/${encodeURIComponent(recipeSlug)}`, {
         method: "DELETE",
       });
     } catch {
-      // best-effort
+      // ignore — the GET will re-detect stale data anyway
     }
     setRefreshing(false);
     hasFetched.current = false;
