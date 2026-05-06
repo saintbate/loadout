@@ -12,9 +12,12 @@ const QUERIES = [
   "Show HN MCP",
   "Show HN AI agent",
   "Show HN LLM tool",
+  "Show HN model context protocol",
+  "Show HN Claude tool",
+  "Show HN MCP server",
 ];
 
-const WINDOW_DAYS = 30;
+const WINDOW_DAYS = 180;
 
 type AlgoliaHit = {
   objectID: string;
@@ -32,7 +35,7 @@ export async function crawlHnAlgolia(): Promise<CrawlerHit[]> {
   const seen = new Map<string, CrawlerHit>();
 
   for (const q of QUERIES) {
-    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q)}&tags=show_hn&numericFilters=created_at_i>${sinceTs}&hitsPerPage=30`;
+    const url = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(q)}&tags=show_hn&numericFilters=created_at_i>${sinceTs}&hitsPerPage=50`;
     const res = await fetch(url, {
       headers: { "user-agent": "loadout-crawler" },
     });

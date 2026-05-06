@@ -13,7 +13,8 @@
     "db:seed": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env db/seed.ts",
     "crawl": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/crawl-tools.ts",
     "mcp:stdio": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env mcp/server.ts",
-    "mcp:smoke": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/smoke-mcp.ts"
+    "mcp:smoke": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/smoke-mcp.ts",
+    "promote": "tsx --env-file-if-exists=.env.local --env-file-if-exists=.env scripts/promote-queue.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

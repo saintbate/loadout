@@ -10,8 +10,10 @@ import { runCrawl } from "@/lib/crawler";
 
 async function main() {
   const enrich = process.argv.includes("--enrich");
-  console.log(`[crawl] starting (enrichWithLLM=${enrich})`);
-  const summaries = await runCrawl({ enrichWithLLM: enrich });
+  const limitArg = process.argv.find((a) => a.startsWith("--limit="));
+  const perSourceLimit = limitArg ? parseInt(limitArg.split("=")[1], 10) : 50;
+  console.log(`[crawl] starting (enrichWithLLM=${enrich} perSourceLimit=${perSourceLimit})`);
+  const summaries = await runCrawl({ enrichWithLLM: enrich, perSourceLimit });
   for (const s of summaries) {
     console.log(
       `[crawl] ${s.source.padEnd(22)} status=${s.status} found=${s.found} new=${s.newlyQueued} bumped=${s.bumped} ${s.durationMs}ms${s.error ? `  ERR: ${s.error}` : ""}`,

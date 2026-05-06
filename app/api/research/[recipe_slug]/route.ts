@@ -23,19 +23,18 @@ export const runtime = "edge";
 const RESEARCH_MODEL = "claude-sonnet-4-6";
 
 const RESEARCH_SYSTEM =
-  "You are a tactical build advisor. Given a build plan, search " +
-  "the web for real implementations of similar systems and return a JSON object with exactly " +
-  "these three fields:\n\n" +
+  "You are a tactical build advisor with deep knowledge of software architecture, " +
+  "open-source projects, and real-world implementation postmortems. Given a build plan, " +
+  "draw on your knowledge to return a JSON object with exactly these three fields:\n\n" +
   "prior_art: 2-3 sentences on how real existing products or open-source projects have " +
   "implemented this. Be specific — name actual products, repos, or postmortems. No generic " +
   "category descriptions.\n\n" +
   "missed_by_obvious: 2-3 sentences on where the standard implementation approach (the one " +
-  "this plan takes) has known failure modes or gaps, based on what you find in real " +
-  "postmortems, GitHub issues, or community discussions. If no specific failure modes are " +
-  "documented, say so.\n\n" +
+  "this plan takes) has known failure modes or gaps, based on real postmortems, GitHub " +
+  "issues, or community discussions. If no specific failure modes are known, say so.\n\n" +
   "differentiation_pick: 2-3 sentences on the single most defensible thing the user could " +
-  "build differently, grounded in a specific gap you found in existing implementations. Must " +
-  "be tied to something real you found, not generic advice. If no clear differentiation " +
+  "build differently, grounded in a specific gap in existing implementations. Must " +
+  "be tied to something concrete, not generic advice. If no clear differentiation " +
   'signal exists, say "The standard implementation is well-covered in this space. Focus on ' +
   'execution quality over differentiation."\n\n' +
   "Return ONLY valid JSON. No preamble, no markdown fences.";
@@ -84,11 +83,7 @@ async function runResearch(
     try {
       const response = await client.messages.create({
         model: RESEARCH_MODEL,
-        max_tokens: 1024,
-        // web_search_20250305 is a built-in Anthropic server-side tool.
-        // Anthropic performs the searches and returns the synthesised
-        // response in one API call — no client-side tool loop needed.
-        tools: [{ type: "web_search_20250305", name: "web_search" } as never],
+        max_tokens: 2048,
         system: RESEARCH_SYSTEM,
         messages: [{ role: "user", content: userMessage }],
       });
